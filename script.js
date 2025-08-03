@@ -1,135 +1,142 @@
-const container = document.querySelector(".container");
-const chatscontainer = document.querySelector(".chats-container");
-const promptFrom = document.querySelector(".prompt-form");
-const promptInput = promptFrom.querySelector(".prompt-input");
-const themeToggle = document.querySelector("#theme-toggle-btn");
+const themeToogle = document.querySelector(".theme-toggle");
+const promptForm = document.querySelector(".prompt-form");
+const promptInput = document.querySelector(".prompt-input");
+const promptBtn = document.querySelector(".prompt-btn");
+const modelSelect = document.getElementById("model-select");
+const countSelect = document.getElementById("count-select");
+const ratioSelect = document.getElementById("ratio-select");
+const gridGallery = document.querySelector(".gallery-grid");
 
+const API_KEY = "hf_mkPdnVKegUUqefPPPkEizSpLsUTxwNQgWThf_FualenffSQSkQuHvlXcMENhARHgJMlKMua";
 
-const API_KEY = 'AIzaSyAclGu-wXs27TXE5AzNFsS2dss4LsTV_Sw';
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyAclGu-wXs27TXE5AzNFsS2dss4LsTV_Sw';
+const examplePrompts = [
+    "a magic forest",
+    "an old steamounk",
+    "a dragon",
+];
 
-let typingInterval, controller;
-const chatHistory = [];
-const userData = {message: " "};
+(() => {
+    const savedTheme = localStorage.getItem("theme");
+    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-const createMsgElement = (content, ...classes) => {
-    const div = document.createElement("div");
-    div.classList.add("message", ...classes);
-    div.innerHTML = content;
-    return div;
-}
+    const isDarkTheme = savedTheme === "dark" || (!savedTheme && systemPrefersDark);
+    document.body.classList.toggle("dark-theme", isDarkTheme);
+    themeToogle.querySelector("i").className = isDarkTheme ? "fa-solid fa-sun" : "fa-solid fa-moon";
+})();
 
-const scrollToBottom = () => {
-    container.scrollTo({
-        top: container.scrollHeight,
-        behavior: "smooth"
-    });
+const toggleTheme = () => {
+    const isDarkTheme = document.body.classList.toggle("dark-theme");
+    localStorage.setItem("theme", isDarkTheme ? "dark" : "light");
+    themeToogle.querySelector("i").className = isDarkTheme ? "fa-solid fa-sun" : "fa-solid fa-moon";
 };
 
-const typingEffert = (text, textElement, botMsgDiv) =>{
-    textElement.textContent = "";
-    const words = text.split(" ");
-    let wordIndex = 0;
-    
-    typingInterval = setInterval(() => {
-        if(wordIndex < words.length){
-            textElement.textContent += (wordIndex === 0 ? "": " ") + words[wordIndex++];
-            botMsgDiv.classList.remove("loading");
-            scrollToBottom();
-        }else{
-            clearInterval(typingInterval);
+const getImageDimensions = (aspectRatio, baseSize = 512) => {
+    const [width, height] = aspectRatio.split(":").map(Number);
+    const scaleFactor = baseSize / Math.sqrt(width * height);
 
+    let calculatedWidth = Math.round(width * scaleFactor);
+    let calculatedHeight = Math.round(height * scaleFactor);
+
+    calculatedWidth = Math.floor(calculatedWidth / 16) * 16;
+    calculatedHeight = Math.floor(calculatedHeight / 16) * 16;
+
+    return { width: calculatedWidth, height: calculatedHeight };
+};
+
+const generateImages = async (selectedModel, imageCount, aspectRatio, promptText) => {
+    const MODEL_URL = `https://router.huggingface.co/hf-inference/models/${selectedModel}`;
+    const { width, height } = getImageDimensions(aspectRatio);
+
+    const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
+        const card = document.getElementById(`img-card-${i}`);
+        try {
+            const response = await fetch(MODEL_URL, {
+                headers: {
+                    Authorization: `Bearer ${API_KEY}`,
+                    "Content-Type": "application/json",
+                },
+                method: "POST",
+                body: JSON.stringify({
+                    inputs: promptText,
+                    parameters: { width, height },
+                    options: { wait_for_model: true, use_cache: false },
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData?.error || "Generation failed.");
+            }
+
+            const blob = await response.blob();
+            const imageUrl = URL.createObjectURL(blob);
+
+            card.classList.remove("loading");
+            card.innerHTML = `
+                <img src="${imageUrl}" class="result-img">
+                <div class="img-overlay">
+                    <button class="img-download-btn" onclick="downloadImage('${imageUrl}')">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                </div>
+            `;
+        } catch (error) {
+            console.error(error);
+            card.classList.remove("loading");
+            card.classList.add("error");
+            card.querySelector(".status-text").textContent = error.message || "Failed to generate.";
         }
-    }, 40)
-}
-
-const generateResponse = async(botMsgDiv) => {
-    const textElement = botMsgDiv.querySelector(".message-text");
-    controller = new AbortController();
-    chatHistory.push({
-        role: "user",
-        parts: [{text: userMessage}]
     });
 
-    try{
-        const response = await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json"},
-            body: JSON.stringify({ contents:chatHistory }),
-            signal: controller.signal
-        });
+    await Promise.allSettled(imagePromises);
+};
 
-        const data = await response.json();
-        if(!response.ok) throw new Error(data.error.message);
+const createImageCards = (selectedModel, imageCount, aspectRatio, promptText) => {
+    gridGallery.innerHTML = "";
 
-    const responseText = data.candidates[0].content.parts[0].text.replace(/\*\*([^*]+)\*\*/g, "$1").trim();
-    typingEffert(responseText, textElement, botMsgDiv);
-
-
-    } catch (error) {
-        textElement.style.color = "#d62939";
-        textElement.textContent = error.name === "AbortError" ? "Response generation stopped." : error.message;
-        botMsgDiv.classList.remove("loading");
+    for (let i = 0; i < imageCount; i++) {
+        gridGallery.innerHTML += `
+            <div class="img-card loading" id="img-card-${i}" style="aspect-ratio: ${aspectRatio}">
+                <div class="status-container">
+                    <div class="spinner"></div>
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <p class="status-text">Generating....</p>
+                </div>
+                <img src="test.png" class="result-img">
+            </div>`;
     }
-}
+
+    generateImages(selectedModel, imageCount, aspectRatio, promptText);
+};
 
 const handleFormSubmit = (e) => {
     e.preventDefault();
-    userMessage = promptInput.value.trim();
-    if(!userMessage || document.body.classList.contains("bot-responding")) return;
 
-    promptInput.value = "";
-    document.body.classList.add("chats-active");
+    const selectedModel = modelSelect.value;
+    const imageCount = parseInt(countSelect.value) || 1;
+    const aspectRatio = ratioSelect.value || "16:9";
+    const promptText = promptInput.value.trim();
 
-    const userMsgHTML = '<p class="message-text"></p>';
-    const userMsgDiv = createMsgElement(userMsgHTML, "user-message");
+    createImageCards(selectedModel, imageCount, aspectRatio, promptText);
+};
 
-    userMsgDiv.querySelector(".message-text").textContent = userMessage;
-    chatscontainer.appendChild(userMsgDiv);
-    scrollToBottom();
+promptBtn.addEventListener("click", () => {
+    const prompt = examplePrompts[Math.floor(Math.random() * examplePrompts.length)];
+    promptInput.value = prompt;
+    promptInput.focus();
+});
 
-    setTimeout(() =>{
-      const botMsgHTML = '<img src="C:/Users/navee/OneDrive/Desktop/gemini-chatbot-logo.svg " class="avatar"><p class="message-text">just a sec...!</p>';
-      const botMsgDiv = createMsgElement(botMsgHTML, "bot-message", "loading");
-      chatscontainer.appendChild(botMsgDiv);
-      generateResponse(botMsgDiv);
-      scrollToBottom();
-    },600);
+promptForm.addEventListener("submit", handleFormSubmit);
+
+// Fix typo in event listener
+themeToogle.addEventListener("click", toggleTheme);
+
+// Add download function globally
+function downloadImage(url) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "generated-image.png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
-
-document.querySelector("#stop-response-btn").addEventListener("click", () => {
-    userMsgDiv = {};
-    controller?.abort();
-    clearInterval(typingInterval);
-});
-
-document.querySelector("#delete-chat-btn").addEventListener("click", ()=> {
-    chatHistory.length= 0;
-    chatscontainer.innerHTML = "";
-    document.body.classList.remove("bot-responding", "chats-active");
-});
-
-document.querySelectorAll(".suggestions-item").forEach(item => {
-    item.addEventListener("click", () => {
-        promptInput.value = item.querySelector(".text").textContent;
-        promptFrom.dispatchEvent(new Event("submit"));
-    });
-});
-
-document.addEventListener("click", ({target}) => {
-    const wrapper = document.querySelector(".prompt-wrapper");
-    const shouldHide = target.classList.contains("prompt-input") || (wrapper.classList.contains("hide-controls") && (target.id === "stop-response-btn       "));
-    wrapper.classList.toggle("hide-controls", shouldHide);
-});
-
-themeToggle.addEventListener("click", () => {
- const isLightTheme = document.body.classList.toggle("light-theme");
- localStorage.setItem("themeColor", isLightTheme ? "light_mode" : "dark_mode");
- themeToggle.textContent = isLightTheme ? "dark_mode" : "light_mode";
-});
-
-const isLightTheme = localStorage.getItem("themeColor") === "light_mode";
-document.body.classList.toggle("light-theme", isLightTheme);
- themeToggle.textContent = isLightTheme ? "dark_mode" : "light_mode";
-
-promptFrom.addEventListener("submit", handleFormSubmit);
