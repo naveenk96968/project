@@ -1,0 +1,6 @@
+CSS NOTES:
+- CSS stands for Cascading Style Sheets.
+- It styles HTML content.
+- Syntax: selector { property: value; }
+- Common properties: color, font-size, margin, padding, background-color.
+- Types: inline, internal, external.

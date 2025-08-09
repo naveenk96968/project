@@ -1,0 +1,6 @@
+HTML NOTES:
+- HTML stands for HyperText Markup Language.
+- It is used to structure web content.
+- Basic structure: <!DOCTYPE html>, <html>, <head>, <body>.
+- Common tags: <p>, <a>, <img>, <h1>-<h6>, <div>, <span>.
+- Attributes: href, src, alt, title, id, class.
